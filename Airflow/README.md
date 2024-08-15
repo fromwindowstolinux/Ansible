@@ -113,7 +113,7 @@ This play block is designed to enable and start the Apache Airflow webserver and
 
 This Ansible play block is responsible for enabling and starting the Apache Airflow Celery worker service on the hosts identified as `airflow_worker`. The Celery worker is a crucial component in an Airflow setup that uses the Celery executor, as it is responsible for executing the tasks that are scheduled by the Airflow scheduler. The block uses the systemd module to manage the Celery worker service. `enabled: yes` ensures that the Celery worker service is enabled to start automatically when the system boots. `state: restarted` ensures that the Celery worker service is running, and if it is already running, it will be restarted to apply any recent configuration changes.
 
-## Play 8: Firewall Configuration
+## Play 8: Firewall Configuration 
 
 ![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-41-04.png)
 
