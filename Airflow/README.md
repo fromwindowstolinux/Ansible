@@ -95,3 +95,27 @@ This play block handles the initialization of the Airflow database and the creat
 - Task: Create systemd service file for Airflow scheduler
 
 This play block is responsible for creating a systemd service file to manage the Apache Airflow webserver, celery worker and scheduler as a service on the target hosts, identified as airflow_master and airflow_worker. It starts by defining the content of the service file using the copy module. The service file configures the Airflow webserver to run as a systemd-managed service, setting it to start automatically after the network is available (`After=network.target`). The service is defined with Restart=always to ensure it is restarted automatically if it crashes, with a minimal delay (`RestartSec=1`). The ExecStart command specifies the command to start the Airflow webserver, using the paths defined by variables `airflow_install_dir` and `airflow_home`. The `WorkingDirectory` and `Environment` directives ensure that the service runs in the correct directory and with the appropriate environment variables set. The service file is then copied to the `/etc/systemd/system/airflow-webserver.service` location on the target hosts, with ownership set to root and permissions set to `0644`, allowing the service to be managed by systemd.
+
+## Play 6: Enable and Start Services for Webserver and Scheduler
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-40-33.png)
+
+- Task: Enable and start Airflow webserver service
+- Task: Enable and start Airflow Scheduler service
+
+This play block is designed to enable and start the Apache Airflow webserver and scheduler services on the target hosts. The webserver provides the user interface for monitoring and managing workflows, while the scheduler is responsible for scheduling tasks based on the defined DAGs. The tasks within this block use the systemd module to manage the services. For both the webserver and the scheduler, `enabled: yes` ensures that the service is enabled to start automatically on boot. `state: restarted` ensures that the service is started, and if it is already running, it will be restarted to apply any recent changes.
+
+## Play 7: Enable and Start Services for Celery Worker
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-40-43.png)
+
+- Task: Enable and start Airflow Celery Worker service
+
+This Ansible play block is responsible for enabling and starting the Apache Airflow Celery worker service on the hosts identified as `airflow_worker`. The Celery worker is a crucial component in an Airflow setup that uses the Celery executor, as it is responsible for executing the tasks that are scheduled by the Airflow scheduler. The block uses the systemd module to manage the Celery worker service. `enabled: yes` ensures that the Celery worker service is enabled to start automatically when the system boots. `state: restarted` ensures that the Celery worker service is running, and if it is already running, it will be restarted to apply any recent configuration changes.
+
+## Play 8: Firewall Configuration
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-41-04.png)
+
+- Task: Open Firewall
+
