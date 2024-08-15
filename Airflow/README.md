@@ -74,3 +74,24 @@ This play block automates the installation of Apache Airflow in a Python virtual
 This play block is designed to set up the necessary user, directories, and configuration file for Apache Airflow on the target system. The eighth task ensures that a system user named `airflow` exists, creating it if necessary, with no login shell (`/bin/false`) and no home directory by default. This user is essential for running Airflow services securely under its own user account. The ninth task ensures that specific directories required by Airflow exist. It iterates over a list of directory paths (`airflow_home`, `airflow_install_dir`, and `airflow_home/dags`) and ensures that each directory is present, owned by the airflow user and group, and created if it does not already exist. These directories are crucial for storing Airflow configurations, the virtual environment, and DAG (Directed Acyclic Graph) files. The tenth task copies an Airflow configuration file (`airflow.cfg`) to the `airflow_home` directory, ensuring it is owned by the airflow user and group, and that its permissions are set to `0600`, meaning only the owner can read and write the file. This task uses the template module, which allows the configuration file to be dynamically generated from a template, possibly incorporating variables or logic within the `airflow.cfg` file.
 
 ![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-39-15.png)
+
+- Task 11: Initialize Airflow database
+- Task 12: Create Airflow admin user
+
+This play block handles the initialization of the Airflow database and the creation of an Airflow admin user, both executed under the airflow user account. The first task initializes the Airflow database by running the airflow `db init` command within the Airflow installation directory. It uses the creates argument to ensure that the initialization is only performed if a specific file (`init_success`) does not already exist, making the task idempotent. The environment variable `AIRFLOW_HOME` is set to the designated Airflow home directory to ensure the command runs in the correct context. The second task creates an Airflow admin user by running the airflow users create command with specified parameters for the username, password, first name, last name, role, and email, all of which are provided via variables. This task is also idempotent, using the creates argument to check for a file (`admin_created`) that indicates the user creation has already been completed. Like the first task, this command is executed with the `AIRFLOW_HOME` environment variable set appropriately.
+
+## Play 5: Systemd Service Files Creation for Airflow Components
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-39-37.png)
+
+- Task: Create systemd service file for Airflow webserver
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-39-53.png)
+
+- Task: Create systemd service file for Airflow celery worker
+
+![Install Airflow in virtual environment](https://github.com/fromwindowstolinux/Ansible/blob/main/Airflow/images/Screenshot%20from%202024-08-14%2009-40-15.png)
+
+- Task: Create systemd service file for Airflow scheduler
+
+This play block is responsible for creating a systemd service file to manage the Apache Airflow webserver, celery worker and scheduler as a service on the target hosts, identified as airflow_master and airflow_worker. It starts by defining the content of the service file using the copy module. The service file configures the Airflow webserver to run as a systemd-managed service, setting it to start automatically after the network is available (`After=network.target`). The service is defined with Restart=always to ensure it is restarted automatically if it crashes, with a minimal delay (`RestartSec=1`). The ExecStart command specifies the command to start the Airflow webserver, using the paths defined by variables `airflow_install_dir` and `airflow_home`. The `WorkingDirectory` and `Environment` directives ensure that the service runs in the correct directory and with the appropriate environment variables set. The service file is then copied to the `/etc/systemd/system/airflow-webserver.service` location on the target hosts, with ownership set to root and permissions set to `0644`, allowing the service to be managed by systemd.
