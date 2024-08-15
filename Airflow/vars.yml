@@ -1,0 +1,26 @@
+---
+db_user: nantoka
+db_password: nantoka
+db_name: nantoka
+
+airflow_install_dir: /opt/airflow
+airflow_home: /var/lib/airflow
+
+airflow_admin_username: admin
+airflow_admin_password: admin
+airflow_admin_firstname: firstname
+airflow_admin_lastname: lastname
+airflow_admin_role: Admin
+airflow_admin_email: admin@example.com
+
+colored_log_format: "{% raw %}[%%(blue)s%%(asctime)s%%(reset)s] {%%(blue)s%%(filename)s:%%(reset)s%%(lineno)d} %%(log_color)s%%(levelname)s%%(reset)s - %%(log_color)s%%(message)s%%(reset)s{% endraw %}"
+log_format: "{% raw %}[%%(asctime)s] {%%(filename)s:%%(lineno)d} %%(levelname)s - %%(message)s{% endraw %}"
+simple_log_format: "{% raw %}%%(asctime)s %%(levelname)s - %%(message)s{% endraw %}"
+dag_processor_log_format: "{% raw %}[%%(asctime)s] [SOURCE:DAG_PROCESSOR] {%%(filename)s:%%(lineno)d} %%(levelname)s - %%(message)s{% endraw %}"
+log_filename_template: "{% raw %}dag_id={{ ti.dag_id }}/run_id={{ ti.run_id }}/task_id={{ ti.task_id }}/{%% if ti.map_index >= 0 %%}map_index={{ ti.map_index }}/{%% endif %%}attempt={{ try_number }}.log{% endraw %}"
+log_processor_filename_template: "{% raw %}{{ filename }}.log{% endraw %}"
+
+airflow_db_connection: 'postgresql+psycopg2://nantoka:nantoka@localhost/nantoka'
+
+celery_broker_url: redis://localhost:6379/0
+celery_result_backend: db+postgresql://nantoka:nantoka@localhost/nantoka

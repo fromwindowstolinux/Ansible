@@ -1,0 +1,322 @@
+---
+- name: Put SELinux in permissive mode
+  hosts: airflow_master, airflow_worker
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Put SELinux in permissive mode
+      selinux:
+        policy: targeted
+        state: permissive
+
+
+- name: Install, start, and enable Redis
+  hosts: airflow_redis
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install Redis
+      dnf:
+        name: 
+          - redis
+        state: present
+
+    - name: Start and enable Redis service
+      service:
+        name: redis
+        state: started
+        enabled: yes
+
+    - name: open firewall
+      firewalld:
+        port: 6379/tcp
+        permanent: true
+        immediate: true
+        state: enabled
+
+
+- name: Install Postgresql and Psycopg2 packages
+  hosts: airflow_postgresql
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install Postgresql and Psycopg2 packages
+      dnf:
+        name: 
+          - postgresql
+          - postgresql-server
+          - python3-psycopg2
+          - python3.11-devel
+        state: present
+
+    - name: Initialize PostgreSQL
+      shell: postgresql-setup initdb
+      args:
+        creates: /var/lib/pgsql/data/pg_hba.conf
+
+    - name: Ensure pg_hba.conf has md5 authentication (ipv4)
+      lineinfile:
+        path: /var/lib/pgsql/data/pg_hba.conf
+        regexp: '^host.*all.*all.*127.0.0.1..*ident$'
+        line: 'host all all 127.0.0.1/32 md5'
+        state: present
+
+    - name: Ensure pg_hba.conf has md5 authentication (ipv6)
+      lineinfile:
+        path: /var/lib/pgsql/data/pg_hba.conf
+        regexp: '^host.*all.*all.*/128..*ident$'
+        line: 'host all all ::1/128 md5'
+        state: present
+
+    - name: Start and enable PostgreSQL service
+      service:
+        name: postgresql
+        state: restarted
+        enabled: yes
+
+    - name: Create app database
+      postgresql_db:
+        state: present
+        name: "{{ db_name }}"
+      become_user: postgres
+
+    - name: Create db user
+      postgresql_user:
+        state: present
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      become_user: postgres
+
+    - name: Grant db user access to app db
+      postgresql_privs:
+        type: database
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        grant_option: no
+        privs: all
+      become_user: postgres
+
+    - name: open postgres firewall
+      firewalld:
+        port: 5432/tcp
+        permanent: true
+        immediate: true
+        state: enabled
+          
+
+- name: Install Airflow in virtual environment
+  hosts: airflow_master, airflow_worker
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Ensure Python3 and pip3 are installed
+      dnf:
+        name: 
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Create a virtual environment for Airflow
+      command: "python3.11 -m venv {{ airflow_install_dir }}"
+      args:
+        creates: "{{ airflow_install_dir }}/bin/activate"
+
+    - name: send constraint file
+      copy: 
+        src: constraints-3.11.txt
+        dest: "{{ airflow_install_dir }}/constraints.txt"
+
+    - name: pip upgrade
+      shell: "{{ airflow_install_dir }}/bin/pip install --upgrade pip && touch {{ airflow_install_dir }}/pip_upgraded"
+      args:
+        creates: "{{ airflow_install_dir }}/pip_upgraded"
+
+    - name: Install Airflow using pip in the virtual environment
+      command: "{{ airflow_install_dir }}/bin/pip install apache-airflow[celery]==2.9.3 -c {{ airflow_install_dir }}/constraints.txt"
+      args:
+        creates: "{{ airflow_install_dir }}/bin/airflow"
+
+    - name: Verify Airflow installation
+      command: "{{ airflow_install_dir }}/bin/airflow version"
+      register: airflow_version
+
+    - name: Print Airflow version
+      debug:
+        msg: "Airflow version installed: {{ airflow_version.stdout }}"
+
+    - name: Install psycopg2-binary
+      pip:
+        name: psycopg2-binary
+        virtualenv: "{{ airflow_install_dir }}"
+
+    - name: Create Airflow user if not exists
+      user:
+        name: airflow
+        state: present
+        system: yes
+        shell: /bin/false
+        create_home: yes
+
+    - name: "Ensure {{ item }} directory exists"
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: airflow
+        group: airflow
+      with_items:
+        - "{{ airflow_home }}"
+        - "{{ airflow_install_dir }}"
+        - "{{ airflow_home }}/dags"
+
+    - name: Template a file to /etc/file.conf
+      ansible.builtin.template:
+        src:  airflow.cfg
+        dest: "{{ airflow_home }}/airflow.cfg"
+        owner: airflow
+        group: airflow
+        mode: '0600'
+
+    - name: Initialize Airflow database
+      become_user: airflow
+      shell: "{{ airflow_install_dir }}/bin/airflow db init && touch {{ airflow_home }}/init_success"
+      args:
+        creates: "{{ airflow_home }}/init_success"
+      environment:
+        AIRFLOW_HOME: "{{ airflow_home }}"
+
+    - name: Create Airflow admin user
+      become_user: airflow
+      shell: >
+        {{ airflow_install_dir }}/bin/airflow users create 
+        --username {{ airflow_admin_username }}
+        --password {{ airflow_admin_password }}  
+        --firstname {{ airflow_admin_firstname }} 
+        --lastname {{ airflow_admin_lastname }} 
+        --role {{ airflow_admin_role }} 
+        --email {{ airflow_admin_email }} && touch {{ airflow_home }}/admin_created
+      args:
+        creates: "{{ airflow_home }}/admin_created"
+      environment:
+        AIRFLOW_HOME: "{{ airflow_home }}"
+    
+    - name: open firewall
+      firewalld:
+        port: 8080/tcp
+        permanent: true
+        immediate: true
+        state: enabled
+      
+
+- name: Create systemd service file for Airflow webserver, scheduler and celery worker
+  hosts: airflow_master, airflow_worker
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create systemd service file for Airflow webserver
+      copy:
+        content: |
+          [Unit]
+          Description=Airflow webserver daemon
+          After=network.target
+          StartLimitIntervalSec=8
+
+          [Service]
+          Type=simple
+          Restart=always
+          RestartSec=1
+          ExecStart={{ airflow_install_dir }}/bin/airflow webserver --port 8080
+          WorkingDirectory={{ airflow_install_dir }}
+          Environment=AIRFLOW_HOME={{ airflow_home }}
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/airflow-webserver.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create systemd service file for Airflow celery worker
+      copy:
+        content: |
+          Description=Airflow celery worker daemon
+          After=network.target
+          StartLimitIntervalSec=0
+
+          [Service]
+          Type=simple
+          Restart=always
+          RestartSec=1
+          ExecStart={{ airflow_install_dir }}/bin/airflow celery worker
+          WorkingDirectory={{ airflow_install_dir }}
+          Environment=AIRFLOW_HOME={{ airflow_home }}
+
+          [Install]
+          WantedBy=multi-user.target
+
+        dest: /etc/systemd/system/airflow-worker.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create systemd service file for Airflow scheduler
+      copy:
+        content: |
+          Description=Airflow scheduler daemon
+          After=network.target
+          StartLimitIntervalSec=0
+
+          [Service]
+          Type=simple
+          Restart=always
+          RestartSec=1
+          ExecStart={{ airflow_install_dir }}/bin/airflow scheduler
+          WorkingDirectory={{ airflow_install_dir }}
+          Environment=AIRFLOW_HOME={{ airflow_home }}
+
+          [Install]
+          WantedBy=multi-user.target
+
+        dest: /etc/systemd/system/airflow-scheduler.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+
+- name: Enable and start Airflow webserver and scheduler service
+  hosts: airflow_master, airflow_worker
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Enable and start Airflow webserver service
+      systemd:
+        name: airflow-webserver
+        enabled: yes
+        state: restarted
+
+    - name: Enable and start Airflow scheduler service
+      systemd:
+        name: airflow-scheduler
+        enabled: yes
+        state: restarted
+
+
+- name: Enable and start Airflow celery worker service
+  hosts: airflow_worker
+  become: yes
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Enable and start Airflow celery worker service
+      systemd:
+        name: airflow-worker
+        enabled: yes
+        state: restarted
